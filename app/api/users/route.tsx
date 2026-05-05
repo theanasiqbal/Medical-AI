@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
         const users = await db.select().from(usersTable)
             //@ts-ignore
             .where(eq(usersTable.email, user?.primaryEmailAddress?.emailAddress));
-        // If Not Then Create NEw User
+        // If Not Then Create NEw Users
         if (users?.length == 0) {
             const result = await db.insert(usersTable).values({
                 //@ts-ignore

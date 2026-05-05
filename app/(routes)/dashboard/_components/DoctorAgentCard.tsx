@@ -89,7 +89,7 @@ function DoctorAgentCard({ doctorAgent }: props) {
             <Button
                 className='w-full mt-2'
                 onClick={onStartConsultation}
-                disabled={!paidUser && doctorAgent.subscriptionRequired} // disable if doctor is premium & user isn't
+                disabled={loading} 
             >
                 Start Consultation{' '}
                 {loading ? (

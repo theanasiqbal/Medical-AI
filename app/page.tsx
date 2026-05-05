@@ -61,7 +61,7 @@ export default function Home() {
 
           </motion.div>
         </Link>
-        <motion.div
+        {/* <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 1.2 }}
@@ -76,9 +76,9 @@ export default function Home() {
               width={1000}
             />
           </div>
-        </motion.div>
+        </motion.div> */}
       </div>
-      <FeatureBentoGrid />
+      {/* <FeatureBentoGrid /> */}
     </div>
   );
 }

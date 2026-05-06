@@ -18,6 +18,7 @@ export type doctorAgent = {
     description: string,
     image: string,
     agentPrompt: string,
+    gender: 'male' | 'female',
     voiceId?: string,
     subscriptionRequired: boolean
 }

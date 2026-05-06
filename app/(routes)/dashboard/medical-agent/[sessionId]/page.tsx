@@ -79,9 +79,9 @@ function MedicalVoiceAgent() {
       voice: {
         model: "eleven_turbo_v2_5",
         voiceId:
-          sessionDetail.selectedDoctor?.voiceId ||
-          process.env.NEXT_PUBLIC_FEMALE_VOICE_ID ||
-          "MF4J4IDTRo0AxOO4dpFR",
+          sessionDetail.selectedDoctor?.gender === "male"
+            ? process.env.NEXT_PUBLIC_MALE_VOICE_ID
+            : process.env.NEXT_PUBLIC_FEMALE_VOICE_ID || "MF4J4IDTRo0AxOO4dpFR",
         provider: "11labs",
         stability: 0.5,
         similarityBoost: 0.75,

@@ -74,7 +74,7 @@ function DoctorAgentCard({ doctorAgent }: props) {
                 alt={doctorAgent.specialist}
                 width={200}
                 height={300}
-                className='w-full h-[230px] object-cover rounded-xl'
+                className='w-full h-[280px] sm:h-[230px] object-cover object-top rounded-xl'
             />
 
             {/* 🩺 Specialist title */}

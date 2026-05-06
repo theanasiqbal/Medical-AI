@@ -1,5 +1,4 @@
 "use client"
-import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import React, { useEffect, useState } from 'react'
 import AddNewSessionDialog from './AddNewSessionDialog';
@@ -9,46 +8,46 @@ import HistoryTable from './HistoryTable';
 
 /**
  * HistoryList Component
- * 
- * Displays the user's previous consultation sessions.
- * - If no sessions exist: shows a placeholder UI and CTA to start a new consultation.
- * - If sessions exist: displays them in a table using <HistoryTable />.
+ *
+ * Shows previous consultations or an empty-state CTA.
  */
 function HistoryList() {
-    const [historyList, setHistoryList] = useState<SessionDetail[]>([]); // stores consultation session history
+    const [historyList, setHistoryList] = useState<SessionDetail[]>([]);
 
-    // ⏳ Load session history when the component mounts
     useEffect(() => {
         GetHistoryList();
     }, [])
 
-    // 📥 Fetch all consultation sessions from the backend
     const GetHistoryList = async () => {
         const result = await axios.get('/api/session-chat?sessionId=all');
         console.log(result.data);
-        setHistoryList(result.data); // update state with the response data
+        setHistoryList(result.data);
     }
 
     return (
-        <div className='mt-10'>
-            {/* 📦 If no history, show empty state UI */}
-            {historyList.length == 0 ? (
-                <div className='flex items-center flex-col justify-center p-7 border border-dashed rounded-2xl border-2'>
+        <div className='mt-8 md:mt-10'>
+            {historyList.length === 0 ? (
+                /* Empty state */
+                <div className='flex items-center flex-col justify-center p-6 sm:p-10 border-2 border-dashed border-border rounded-2xl bg-secondary/30 text-center gap-3'>
                     <Image
                         src={'/medical-assistance.png'}
                         alt='empty'
-                        width={150}
-                        height={150}
+                        width={120}
+                        height={120}
+                        className='opacity-80 w-20 h-20 sm:w-28 sm:h-28'
                     />
-                    <h2 className='font-bold text-xl mt-2'>No Recent Consultations</h2>
-                    <p>It looks like you haven't consulted with any doctors yet.</p>
-
-                    {/* ➕ Trigger to start a new consultation */}
+                    <div>
+                        <h2 className='font-bold text-lg sm:text-xl mt-1'>No Recent Consultations</h2>
+                        <p className='text-sm text-muted-foreground mt-1'>
+                            You haven&apos;t consulted with any doctors yet.
+                        </p>
+                    </div>
                     <AddNewSessionDialog />
                 </div>
             ) : (
-                // 📊 Show consultation history table
+                /* Consultation history table */
                 <div>
+                    <h2 className='font-bold text-lg sm:text-xl mb-4'>Recent Consultations</h2>
                     <HistoryTable historyList={historyList} />
                 </div>
             )}

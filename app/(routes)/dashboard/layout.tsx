@@ -7,9 +7,9 @@ function DashboardLayout({
     children: React.ReactNode;
 }>) {
     return (
-        <div>
+        <div className='min-h-screen bg-background'>
             <AppHeader />
-            <div className='px-10 md:px-20 lg:px-40 py-10'>
+            <div className='px-4 sm:px-6 md:px-12 lg:px-20 xl:px-40 py-6 md:py-10'>
                 {children}
             </div>
         </div>

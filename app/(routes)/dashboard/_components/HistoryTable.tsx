@@ -9,59 +9,53 @@ import {
     TableRow,
 } from "@/components/ui/table"
 import { SessionDetail } from '../medical-agent/[sessionId]/page'
-import { Button } from '@/components/ui/button'
 import moment from 'moment'
 import ViewReportDialog from './ViewReportDialog'
 
 type Props = {
-    historyList: SessionDetail[] // Array of session records to display
+    historyList: SessionDetail[]
 }
 
 /**
  * HistoryTable Component
- * 
- * Displays a table listing previous consultation sessions including:
- * - AI Medical Specialist
- * - Notes/Description
- * - Created Date
- * - View Report Action
+ * Displays previous consultation sessions in a horizontally scrollable table.
  */
 function HistoryTable({ historyList }: Props) {
     return (
-        <div>
-            <Table>
-                {/* 📋 Caption for accessibility and context */}
-                <TableCaption>Previous Consultation Reports</TableCaption>
+        /* Horizontal scroll wrapper keeps the table from overflowing on small screens */
+        <div className='w-full overflow-x-auto rounded-xl border border-border'>
+            <Table className='min-w-[500px]'>
+                <TableCaption className='pb-3'>Previous Consultation Reports</TableCaption>
 
-                {/* 🧾 Table Header Row */}
                 <TableHeader>
-                    <TableRow>
-                        <TableHead>AI Medical Specialist</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead className="text-right">Action</TableHead>
+                    <TableRow className='bg-secondary/50'>
+                        <TableHead className='font-semibold'>Specialist</TableHead>
+                        <TableHead className='font-semibold hidden sm:table-cell'>Description</TableHead>
+                        <TableHead className='font-semibold'>Date</TableHead>
+                        <TableHead className='text-right font-semibold'>Report</TableHead>
                     </TableRow>
                 </TableHeader>
 
-                {/* 📄 Table Body */}
                 <TableBody>
                     {historyList.map((record: SessionDetail, index: number) => (
-                        <TableRow key={index}>
+                        <TableRow key={index} className='hover:bg-secondary/30 transition-colors'>
                             {/* Doctor specialty */}
-                            <TableCell className="font-medium">
+                            <TableCell className='font-medium'>
                                 {record.selectedDoctor.specialist}
                             </TableCell>
 
-                            {/* Session notes or symptoms */}
-                            <TableCell>{record.notes}</TableCell>
+                            {/* Notes — hidden on very small screens */}
+                            <TableCell className='hidden sm:table-cell text-muted-foreground max-w-[160px] truncate'>
+                                {record.notes}
+                            </TableCell>
 
                             {/* Human-readable timestamp */}
-                            <TableCell>
+                            <TableCell className='text-muted-foreground whitespace-nowrap text-xs sm:text-sm'>
                                 {moment(new Date(record.createdOn)).fromNow()}
                             </TableCell>
 
-                            {/* 🔍 View Report Action */}
-                            <TableCell className="text-right">
+                            {/* View Report action */}
+                            <TableCell className='text-right'>
                                 <ViewReportDialog record={record} />
                             </TableCell>
                         </TableRow>

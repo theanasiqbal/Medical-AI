@@ -32,48 +32,45 @@ type messages = {
  * view live transcripts, and generate a consultation report.
  */
 function MedicalVoiceAgent() {
-  const { sessionId } = useParams(); // Get sessionId from route parameters
-  const [sessionDetail, setSessionDetail] = useState<SessionDetail>(); // Current session details
-  const [callStarted, setCallStarted] = useState(false); // Call connection status
-  const [vapiInstance, setVapiInstance] = useState<any>(null); // Instance of Vapi for voice interaction
-  const [isMuted, setIsMuted] = useState(false); // Mute status
-  const [currentRole, setCurrentRole] = useState<string | null>(null); // Current speaking role (user/assistant)
-  const [liveTranscript, setLiveTranscript] = useState<string>(""); // Live transcription text
-  const [messages, setMessages] = useState<messages[]>([]); // Finalized chat messages log
-  const [loading, setLoading] = useState(false); // Loading state for UI feedback
+  const { sessionId } = useParams();
+  const [sessionDetail, setSessionDetail] = useState<SessionDetail>();
+  const [callStarted, setCallStarted] = useState(false);
+  const [vapiInstance, setVapiInstance] = useState<any>(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [currentRole, setCurrentRole] = useState<string | null>(null);
+  const [liveTranscript, setLiveTranscript] = useState<string>("");
+  const [messages, setMessages] = useState<messages[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [duration, setDuration] = useState(0);
   const router = useRouter();
   const callActiveRef = useRef(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Load session details on component mount or when sessionId changes
   useEffect(() => {
     if (sessionId) GetSessionDetails();
   }, [sessionId]);
 
-  // Fetch session detail data from backend API
+  // Auto-scroll chat to bottom on new messages
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, liveTranscript]);
+
   const GetSessionDetails = async () => {
     const result = await axios.get(`/api/session-chat?sessionId=${sessionId}`);
     setSessionDetail(result.data);
   };
 
-  /**
-   * StartCall
-   * Initializes and starts the voice call with the AI Medical Doctor Voice Agent
-   * using the Vapi SDK and sets up event listeners for call and speech events.
-   */
   const StartCall = () => {
     if (!sessionDetail) return;
     setLoading(true);
 
-    // Initialize Vapi instance with your API key
     const vapi = new Vapi(process.env.NEXT_PUBLIC_VAPI_API_KEY!);
     setVapiInstance(vapi);
 
-    // Configuration for the AI voice agent
     const VapiAgentConfig = {
       name: "AI Medical Doctor Voice Agent",
       firstMessage:
-        "नमस्ते! मैं आपकी एआई मेडिकल असिस्टेंट हूँ। मैं आपकी सेहत से जुड़े किसी भी सवाल में आपकी मदद कर सकती हूँ। आप आज कैसा महसूस कर रहे हैं?",
-
+        "Hi, I'm your AI Medical Assistant. How can i help you?  ",
       transcriber: {
         model: "nova-3",
         provider: "deepgram",
@@ -104,13 +101,10 @@ function MedicalVoiceAgent() {
     //@ts-ignore
     vapi.start(VapiAgentConfig);
 
-    // Event listeners for Vapi voice call lifecycle
-
     vapi.on("call-start", () => {
       callActiveRef.current = true;
       setLoading(false);
       setCallStarted(true);
-      console.log("Call started");
     });
 
     vapi.on("call-end", () => {
@@ -118,20 +112,16 @@ function MedicalVoiceAgent() {
       setCallStarted(false);
       setVapiInstance(null);
       setIsMuted(false);
-      console.log("Call ended");
     });
 
     vapi.on("message", (message) => {
       if (!callActiveRef.current) return;
-
       if (message.type === "transcript") {
         const { role, transcriptType, transcript } = message;
         if (transcriptType === "partial") {
-          // Show live partial transcript while user/assistant is speaking
           setLiveTranscript(transcript);
           setCurrentRole(role);
         } else if (transcriptType === "final") {
-          // Add finalized transcript to messages log
           setMessages((prev) => [...prev, { role, text: transcript }]);
           setLiveTranscript("");
           setCurrentRole(null);
@@ -139,27 +129,14 @@ function MedicalVoiceAgent() {
       }
     });
 
-    vapi.on("speech-start", () => {
-      setCurrentRole("assistant");
-    });
-
-    vapi.on("speech-end", () => {
-      setCurrentRole("user");
-    });
+    vapi.on("speech-start", () => setCurrentRole("assistant"));
+    vapi.on("speech-end", () => setCurrentRole("user"));
     vapi.on("error", (err) => {
-      if (err?.errorMsg === "Meeting has ended") {
-        console.log("Meeting already ended, ignoring");
-        return;
-      }
-
+      if (err?.errorMsg === "Meeting has ended") return;
       console.error("Vapi error:", err);
     });
   };
 
-  /**
-   * toggleMute
-   * Toggles the microphone status (muted/unmuted)
-   */
   const toggleMute = () => {
     if (vapiInstance) {
       const newMuteStatus = !isMuted;
@@ -169,166 +146,139 @@ function MedicalVoiceAgent() {
     }
   };
 
-  /**
-   * endCall
-   * Ends the ongoing voice call, cleans up listeners, generates
-   * a consultation report, and redirects the user back to dashboard.
-   */
   const endCall = async () => {
     if (!vapiInstance || !callActiveRef.current) {
       router.replace("/dashboard");
       return;
     }
-
     callActiveRef.current = false;
-    // Generate consultation report based on chat messages/
     try {
-      const result = await GenerateReport();
+      await GenerateReport();
     } catch (e) {
       console.error("Report generation failed", e);
     }
-
-    // Stop the Vapi call and remove event listeners
     try {
       vapiInstance.stop();
     } catch {
-      // call already ended — ignore
-      console.log("Meeting already ended, ignoring");
       return;
     }
-
     vapiInstance.off("call-start");
     vapiInstance.off("call-end");
     vapiInstance.off("message");
     vapiInstance.off("speech-start");
     vapiInstance.off("speech-end");
-
     setCallStarted(false);
     setVapiInstance(null);
     setIsMuted(false);
-
     toast.success("Your report is generated!");
-
-    // Redirect to dashboard after call ends and report is generated
     router.replace("/dashboard");
   };
 
-  /**
-   * GenerateReport
-   * Sends the collected messages and session details to backend API to
-   * create a medical consultation report.
-   */
   const GenerateReport = async () => {
     setLoading(true);
     const result = await axios.post("/api/medical-report", {
-      messages: messages,
-      sessionDetail: sessionDetail,
-      sessionId: sessionId,
+      messages,
+      sessionDetail,
+      sessionId,
     });
-
-    console.log(result.data);
     setLoading(false);
-
     return result.data;
   };
 
-  const [duration, setDuration] = useState(0); // Call duration in seconds
-
-  // Timer effect
+  // Timer
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (callStarted) {
-      interval = setInterval(() => {
-        setDuration((prev) => prev + 1);
-      }, 1000);
+      interval = setInterval(() => setDuration((prev) => prev + 1), 1000);
     } else {
       setDuration(0);
     }
     return () => clearInterval(interval);
   }, [callStarted]);
 
-  // Format duration as MM:SS
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
   return (
-    <div className="p-8 border rounded-3xl bg-secondary min-h-[600px] flex flex-col">
-      {/* Status bar showing if call is connected */}
-      <div className="flex justify-between items-center mb-8">
-        <h2 className="p-2 px-4 border rounded-full flex gap-2 items-center bg-background/50 backdrop-blur-sm">
+    <div className='p-4 sm:p-6 md:p-8 border border-border rounded-2xl sm:rounded-3xl bg-secondary/40 min-h-[500px] flex flex-col gap-6'>
+
+      {/* ─── Status Bar ─── */}
+      <div className='flex justify-between items-center'>
+        <span className='px-3 py-1.5 border border-border rounded-full flex gap-2 items-center bg-background/60 backdrop-blur-sm text-sm font-medium'>
           <Circle
-            className={`h-3 w-3 rounded-full ${
-              callStarted ? "bg-green-500 animate-pulse" : "bg-red-500"
-            }`}
+            className={`h-2.5 w-2.5 rounded-full ${callStarted ? "text-green-500 fill-green-500 animate-pulse" : "text-red-500 fill-red-500"
+              }`}
           />
-          <span className="text-sm font-medium">
-            {callStarted ? "Connected" : "Not Connected"}
-          </span>
-        </h2>
-        <div className="flex items-center gap-4">
-          <h2 className="font-mono text-xl text-gray-500">{formatDuration(duration)}</h2>
-        </div>
+          {callStarted ? "Connected" : "Not Connected"}
+        </span>
+        <span className='font-mono text-base sm:text-xl text-muted-foreground tabular-nums'>
+          {formatDuration(duration)}
+        </span>
       </div>
 
-      {/* Main content grid */}
+      {/* ─── Main Content ─── */}
       {sessionDetail && (
-        <div className="grid grid-cols-1 md:grid-cols-[30%_70%] gap-10 flex-1">
-          {/* Left Column: Agent and Controls */}
-          <div className="flex flex-col items-center justify-center border-r border-gray-200 dark:border-gray-800 pr-0 md:pr-10">
-            <div className="relative group">
-              <div className={`absolute -inset-1 bg-gradient-to-r from-primary to-blue-600 rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200 ${callStarted ? 'animate-tilt' : ''}`}></div>
+        /* Stack on mobile → side-by-side on md+ */
+        <div className='flex flex-col md:grid md:grid-cols-[30%_70%] gap-6 md:gap-10 flex-1'>
+
+          {/* ── Left: Agent Panel ── */}
+          <div className='flex flex-col items-center justify-start md:justify-center md:border-r md:border-border pb-4 md:pb-0 md:pr-8 gap-5'>
+            {/* Doctor avatar */}
+            <div className='relative group'>
+              <div className={`absolute -inset-1 bg-gradient-to-r from-primary to-blue-600 rounded-full blur opacity-20 group-hover:opacity-50 transition duration-700 ${callStarted ? "animate-pulse" : ""}`} />
               <Image
                 src={sessionDetail.selectedDoctor?.image}
                 alt={sessionDetail.selectedDoctor?.specialist ?? ""}
                 width={180}
                 height={180}
-                className="relative h-[160px] w-[160px] object-cover rounded-full border-4 border-background shadow-2xl"
+                className='relative h-28 w-28 sm:h-36 sm:w-36 md:h-40 md:w-40 object-cover rounded-full border-4 border-background shadow-2xl'
               />
             </div>
-            
-            <div className="text-center mt-6">
-              <h2 className="text-2xl font-bold text-foreground">
+
+            {/* Doctor info */}
+            <div className='text-center'>
+              <h2 className='text-lg sm:text-xl md:text-2xl font-bold'>
                 {sessionDetail.selectedDoctor?.specialist}
               </h2>
-              <p className="text-sm text-muted-foreground font-medium uppercase tracking-wider mt-1">
+              <p className='text-xs text-muted-foreground uppercase tracking-wider mt-0.5'>
                 AI Medical Voice Agent
               </p>
             </div>
 
-            {/* Controls */}
-            <div className="flex flex-wrap justify-center gap-4 mt-10">
+            {/* Call controls */}
+            <div className='flex flex-wrap justify-center gap-3'>
               {!callStarted ? (
-                <Button 
-                  size="lg"
-                  className="rounded-full px-8 h-14 text-lg shadow-lg hover:shadow-primary/20 transition-all" 
-                  onClick={StartCall} 
+                <Button
+                  size='lg'
+                  className='rounded-full px-6 sm:px-8 h-12 sm:h-14 text-sm sm:text-base shadow-lg hover:shadow-primary/20 transition-all gap-2'
+                  onClick={StartCall}
                   disabled={loading}
                 >
-                  {loading ? <Loader className="animate-spin mr-2" /> : <PhoneCall className="mr-2" />}
+                  {loading ? <Loader className='animate-spin' size={18} /> : <PhoneCall size={18} />}
                   Start Call
                 </Button>
               ) : (
                 <>
-                  <Button 
-                    size="lg"
-                    variant="outline"
-                    className={`rounded-full w-14 h-14 p-0 shadow-md ${isMuted ? 'bg-red-50 border-red-200 text-red-500 hover:bg-red-100' : ''}`}
+                  <Button
+                    size='lg'
+                    variant='outline'
+                    className={`rounded-full w-12 h-12 sm:w-14 sm:h-14 p-0 shadow-md transition-colors ${isMuted ? "bg-red-50 border-red-200 text-red-500 hover:bg-red-100 dark:bg-red-950/30" : ""
+                      }`}
                     onClick={toggleMute}
                   >
-                    {isMuted ? <MicOff /> : <Mic />}
+                    {isMuted ? <MicOff size={18} /> : <Mic size={18} />}
                   </Button>
-                  
-                  <Button 
-                    size="lg"
-                    variant="destructive" 
-                    className="rounded-full px-8 h-14 text-lg shadow-lg"
-                    onClick={endCall} 
+                  <Button
+                    size='lg'
+                    variant='destructive'
+                    className='rounded-full px-6 sm:px-8 h-12 sm:h-14 text-sm sm:text-base shadow-lg gap-2'
+                    onClick={endCall}
                     disabled={loading}
                   >
-                    {loading ? <Loader className="animate-spin mr-2" /> : <PhoneOff className="mr-2" />}
+                    {loading ? <Loader className='animate-spin' size={18} /> : <PhoneOff size={18} />}
                     Disconnect
                   </Button>
                 </>
@@ -336,89 +286,99 @@ function MedicalVoiceAgent() {
             </div>
           </div>
 
-          {/* Right Column: Conversation Log */}
-          <div className="flex flex-col bg-background/40 rounded-2xl p-6 shadow-inner overflow-hidden max-h-[500px]">
-             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-4 flex items-center gap-2">
-                <span className="w-1.5 h-1.5 bg-primary rounded-full"></span>
-                Conversation Log
-             </h3>
-             
-             <div className="overflow-y-auto flex-1 space-y-4 pr-2 custom-scrollbar">
-                {messages.length === 0 && !liveTranscript && (
-                  <div className="h-full flex items-center justify-center text-muted-foreground italic text-sm">
-                    Waiting for conversation to start...
-                  </div>
-                )}
-                
-                <ul className="space-y-6">
-                  {messages.reduce((acc: any[], current) => {
+          {/* ── Right: Conversation Log ── */}
+          <div className='flex flex-col bg-background/50 rounded-2xl p-4 sm:p-6 shadow-inner border border-border/30 min-h-[300px] md:min-h-0 md:max-h-[480px]'>
+            <h3 className='text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-4 flex items-center gap-2 shrink-0'>
+              <span className='w-1.5 h-1.5 bg-primary rounded-full' />
+              Conversation Log
+            </h3>
+
+            <div className='overflow-y-auto flex-1 space-y-4 pr-1'>
+              {messages.length === 0 && !liveTranscript && (
+                <div className='h-full flex items-center justify-center text-muted-foreground italic text-sm text-center px-4'>
+                  {callStarted
+                    ? "Listening… start speaking!"
+                    : "Start the call to begin your consultation."}
+                </div>
+              )}
+
+              <ul className='space-y-4'>
+                {messages
+                  .reduce((acc: any[], current) => {
                     if (acc.length > 0 && acc[acc.length - 1].role === current.role) {
-                      acc[acc.length - 1].text += ' ' + current.text;
+                      acc[acc.length - 1].text += " " + current.text;
                     } else {
                       acc.push({ role: current.role, text: current.text });
                     }
                     return acc;
-                  }, []).map((group, groupIndex) => {
-                    // Split assistant messages into points based on sentence boundaries (Hindi and English)
-                    const points = group.role === 'assistant' 
-                      ? group.text.split(/[।\.!\?]+/).map((s: string) => s.trim()).filter((s: string) => s.length > 3)
-                      : [group.text];
+                  }, [])
+                  .map((group, groupIndex) => {
+                    const points =
+                      group.role === "assistant"
+                        ? group.text
+                          .split(/[।\.!\?]+/)
+                          .map((s: string) => s.trim())
+                          .filter((s: string) => s.length > 3)
+                        : [group.text];
 
                     return (
-                      <li key={groupIndex} className={`flex flex-col ${group.role === 'user' ? 'items-end' : 'items-start'}`}>
-                        <div className={`max-w-[90%] p-5 rounded-3xl text-sm shadow-md transition-all ${
-                          group.role === 'user' 
-                            ? 'bg-primary text-primary-foreground rounded-tr-none border-b-4 border-primary/20' 
-                            : 'bg-background text-foreground rounded-tl-none border shadow-sm'
-                        }`}>
-                          <div className="flex items-center gap-2 mb-3 opacity-60">
-                            <span className={`w-2 h-2 rounded-full ${group.role === 'user' ? 'bg-primary-foreground' : 'bg-primary'}`}></span>
-                            <span className="font-bold text-[10px] uppercase tracking-widest">
-                              {group.role}
-                            </span>
+                      <li
+                        key={groupIndex}
+                        className={`flex flex-col ${group.role === "user" ? "items-end" : "items-start"}`}
+                      >
+                        <div
+                          className={`max-w-[92%] sm:max-w-[85%] p-3 sm:p-4 rounded-2xl text-sm shadow-sm ${group.role === "user"
+                              ? "bg-primary text-primary-foreground rounded-tr-none"
+                              : "bg-background text-foreground rounded-tl-none border border-border"
+                            }`}
+                        >
+                          <div className='flex items-center gap-1.5 mb-2 opacity-60'>
+                            <span className={`w-1.5 h-1.5 rounded-full ${group.role === "user" ? "bg-primary-foreground" : "bg-primary"}`} />
+                            <span className='font-bold text-[10px] uppercase tracking-widest'>{group.role}</span>
                           </div>
-                          
-                          {group.role === 'assistant' && points.length > 1 ? (
-                            <ul className="space-y-3">
-                              {points.map((point: string, pointIndex: number) => (
-                                <li key={pointIndex} className="flex gap-3 leading-relaxed">
-                                  <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-primary/30 shrink-0"></span>
+
+                          {group.role === "assistant" && points.length > 1 ? (
+                            <ul className='space-y-2'>
+                              {points.map((point: string, pi: number) => (
+                                <li key={pi} className='flex gap-2 leading-relaxed'>
+                                  <span className='mt-1.5 w-1.5 h-1.5 rounded-full bg-primary/40 shrink-0' />
                                   {point}
                                 </li>
                               ))}
                             </ul>
                           ) : (
-                            <p className="leading-relaxed whitespace-pre-wrap">
-                              {group.text}
-                            </p>
+                            <p className='leading-relaxed whitespace-pre-wrap'>{group.text}</p>
                           )}
                         </div>
                       </li>
                     );
                   })}
-                  
-                  {liveTranscript && (
-                    <li className={`flex flex-col ${currentRole === 'user' ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
-                      <div className={`max-w-[90%] p-5 rounded-3xl text-sm shadow-md ${
-                        currentRole === 'user' 
-                          ? 'bg-primary/90 text-primary-foreground rounded-tr-none' 
-                          : 'bg-background/90 text-foreground rounded-tl-none border border-primary/20'
-                      }`}>
-                        <div className="flex items-center gap-2 mb-3 opacity-60">
-                          <span className={`w-2 h-2 rounded-full animate-pulse ${currentRole === 'user' ? 'bg-primary-foreground' : 'bg-primary'}`}></span>
-                          <span className="font-bold text-[10px] uppercase tracking-widest">
-                            {currentRole}
-                          </span>
-                        </div>
-                        <p className="leading-relaxed italic">
-                          {liveTranscript}
-                          <span className="inline-flex w-1 h-4 bg-current ml-1 animate-pulse align-middle"></span>
-                        </p>
+
+                {/* Live partial transcript */}
+                {liveTranscript && (
+                  <li className={`flex flex-col ${currentRole === "user" ? "items-end" : "items-start"} animate-in fade-in slide-in-from-bottom-2 duration-200`}>
+                    <div
+                      className={`max-w-[92%] sm:max-w-[85%] p-3 sm:p-4 rounded-2xl text-sm ${currentRole === "user"
+                          ? "bg-primary/80 text-primary-foreground rounded-tr-none"
+                          : "bg-background/80 text-foreground rounded-tl-none border border-primary/20"
+                        }`}
+                    >
+                      <div className='flex items-center gap-1.5 mb-2 opacity-60'>
+                        <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${currentRole === "user" ? "bg-primary-foreground" : "bg-primary"}`} />
+                        <span className='font-bold text-[10px] uppercase tracking-widest'>{currentRole}</span>
                       </div>
-                    </li>
-                  )}
-                </ul>
-             </div>
+                      <p className='leading-relaxed italic'>
+                        {liveTranscript}
+                        <span className='inline-flex w-0.5 h-4 bg-current ml-1 animate-pulse align-middle' />
+                      </p>
+                    </div>
+                  </li>
+                )}
+              </ul>
+
+              {/* Auto-scroll anchor */}
+              <div ref={chatEndRef} />
+            </div>
           </div>
         </div>
       )}

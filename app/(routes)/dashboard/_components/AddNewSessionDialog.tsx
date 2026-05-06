@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { ArrowRight, Loader2 } from 'lucide-react'
+import { ArrowRight, Loader2, Stethoscope } from 'lucide-react'
 import axios from 'axios'
 import DoctorAgentCard, { doctorAgent } from './DoctorAgentCard'
 import SuggestedDoctorCard from './SuggestedDoctorCard'
@@ -21,55 +21,41 @@ import { useAuth } from '@clerk/nextjs'
 import { SessionDetail } from '../medical-agent/[sessionId]/page'
 
 function AddNewSessionDialog() {
-    // 🧠 Local state management
-    const [note, setNote] = useState<string>(); // stores user symptom input
-    const [loading, setLoading] = useState(false); // tracks loading state
-    const [suggestedDoctors, setSuggestedDoctors] = useState<doctorAgent[]>(); // stores suggested doctors
-    const [selectedDoctor, setSelectedDoctor] = useState<doctorAgent>(); // tracks selected doctor
-    const [historyList, setHistoryList] = useState<SessionDetail[]>([]); // stores past session list
+    const [note, setNote] = useState<string>();
+    const [loading, setLoading] = useState(false);
+    const [suggestedDoctors, setSuggestedDoctors] = useState<doctorAgent[]>();
+    const [selectedDoctor, setSelectedDoctor] = useState<doctorAgent>();
+    const [historyList, setHistoryList] = useState<SessionDetail[]>([]);
 
     const router = useRouter();
     const { has } = useAuth();
 
-    // ✅ Checks if user has a paid subscription (Clerk custom role)
     //@ts-ignore
     const paidUser = has && has({ plan: 'pro' });
 
-    // 🧾 Fetch session history when dialog mounts
     useEffect(() => {
         GetHistoryList();
     }, [])
 
-    // 📥 Get all previous session records
     const GetHistoryList = async () => {
         const result = await axios.get('/api/session-chat?sessionId=all');
-        console.log(result.data);
         setHistoryList(result.data);
     }
 
-    // 🧠 Handles the "Next" button click — suggests doctors based on user input
     const OnClickNext = async () => {
         setLoading(true);
-        const result = await axios.post('/api/suggest-doctors', {
-            notes: note
-        });
-
-        console.log(result.data);
+        const result = await axios.post('/api/suggest-doctors', { notes: note });
         setSuggestedDoctors(result.data);
         setLoading(false);
     }
 
-    // 🩺 Handles "Start Consultation" button — saves session and redirects
     const onStartConsultation = async () => {
         setLoading(true);
         const result = await axios.post('/api/session-chat', {
             notes: note,
             selectedDoctor: selectedDoctor
         });
-
-        console.log(result.data);
         if (result.data?.sessionId) {
-            // 🔁 Redirect to the new session page
             router.push('/dashboard/medical-agent/' + result.data.sessionId);
         }
         setLoading(false);
@@ -77,36 +63,44 @@ function AddNewSessionDialog() {
 
     return (
         <Dialog>
-            {/* 🔘 Open Dialog Button */}
-            <DialogTrigger>
+            {/* Trigger button */}
+            <DialogTrigger asChild>
                 <Button
-                    className='mt-3'
-                    disabled={!paidUser && historyList?.length >= 1} // restrict for free users
+                    className='mt-1 sm:mt-0 gap-2'
+                    disabled={!paidUser && historyList?.length >= 1}
                 >
-                    + Start a Consultation
+                    <Stethoscope size={16} />
+                    Start a Consultation
                 </Button>
             </DialogTrigger>
 
-            {/* 🗂️ Dialog Content */}
-            <DialogContent>
+            {/* Dialog — full-width on mobile, capped on larger screens */}
+            <DialogContent className='w-[95vw] max-w-lg sm:max-w-xl rounded-2xl'>
                 <DialogHeader>
-                    <DialogTitle>Add Basic Details</DialogTitle>
+                    <DialogTitle className='text-lg sm:text-xl'>
+                        {!suggestedDoctors ? 'Describe Your Symptoms' : 'Choose Your Doctor'}
+                    </DialogTitle>
+
                     <DialogDescription asChild>
-                        {/* Step 1: Enter Symptoms */}
                         {!suggestedDoctors ? (
-                            <div>
-                                <h2>Add Symptoms or Any Other Details</h2>
+                            /* Step 1: Symptom input */
+                            <div className='pt-2'>
+                                <p className='text-sm text-muted-foreground mb-2'>
+                                    Tell us what you&apos;re experiencing and we&apos;ll recommend the right specialist.
+                                </p>
                                 <Textarea
-                                    placeholder='Add Detail here...'
-                                    className='h-[200px] mt-1'
+                                    placeholder='Describe your symptoms or concern here…'
+                                    className='h-[160px] sm:h-[200px] mt-1 resize-none'
                                     onChange={(e) => setNote(e.target.value)}
                                 />
                             </div>
                         ) : (
-                            // Step 2: Show Suggested Doctors
-                            <div>
-                                <h2>Select the doctor</h2>
-                                <div className='grid grid-cols-3 gap-5'>
+                            /* Step 2: Doctor selection — 2 cols on mobile, 3 on sm+ */
+                            <div className='pt-2'>
+                                <p className='text-sm text-muted-foreground mb-3'>
+                                    Tap a doctor to select, then start your consultation.
+                                </p>
+                                <div className='grid grid-cols-2 sm:grid-cols-3 gap-3'>
                                     {suggestedDoctors.map((doctor, index) => (
                                         <SuggestedDoctorCard
                                             doctorAgent={doctor}
@@ -122,27 +116,31 @@ function AddNewSessionDialog() {
                     </DialogDescription>
                 </DialogHeader>
 
-                {/* ✅ Dialog Footer with Buttons */}
-                <DialogFooter>
-                    {/* Cancel Button */}
-                    <DialogClose>
-                        <Button variant={'outline'}>Cancel</Button>
+                {/* Footer buttons */}
+                <DialogFooter className='flex-col-reverse sm:flex-row gap-2 sm:gap-0 pt-2'>
+                    <DialogClose asChild>
+                        <Button variant='outline' className='w-full sm:w-auto'>Cancel</Button>
                     </DialogClose>
 
-                    {/* Next or Start Button depending on the step */}
                     {!suggestedDoctors ? (
                         <Button
                             disabled={!note || loading}
-                            onClick={() => OnClickNext()}
+                            onClick={OnClickNext}
+                            className='w-full sm:w-auto gap-2'
                         >
-                            Next {loading ? <Loader2 className='animate-spin' /> : <ArrowRight />}
+                            {loading ? <Loader2 className='animate-spin' size={16} /> : null}
+                            Next
+                            {!loading && <ArrowRight size={16} />}
                         </Button>
                     ) : (
                         <Button
                             disabled={loading || !selectedDoctor}
-                            onClick={() => onStartConsultation()}
+                            onClick={onStartConsultation}
+                            className='w-full sm:w-auto gap-2'
                         >
-                            Start Consultation {loading ? <Loader2 className='animate-spin' /> : <ArrowRight />}
+                            {loading ? <Loader2 className='animate-spin' size={16} /> : null}
+                            Start Consultation
+                            {!loading && <ArrowRight size={16} />}
                         </Button>
                     )}
                 </DialogFooter>
